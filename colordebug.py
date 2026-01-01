@@ -1,6 +1,6 @@
 """
 colordebug - Colorful debugging utilities for Python
-Copyright 2025 colordebug Contributors
+Copyright 2026 colordebug Contributors
 Licensed under Apache License 2.0 - see LICENSE file for details
 """
 
@@ -24,6 +24,10 @@ KEEP_ERROR_LINES = True
 LOG_FORMAT = 'text'  # 'text', 'json'
 SENSITIVE_KEYS = ['password', 'token', 'api_key', 'secret', 'auth_key', 'credential']
 
+# Panic mode settings
+PANIC_MODE = False
+PANIC_LOG_FILE = "panic.log"
+
 # Show welcome message only once
 _SHOW_WELCOME = True
 
@@ -44,18 +48,17 @@ def _show_welcome_message():
     """Show welcome message on first import"""
     global _SHOW_WELCOME
     if _SHOW_WELCOME and CONSOLE_ENABLED:
-        print(f"\n{color.BOLD}{color.CYAN}🌟 Welcome to colordebug!{color.END}")
-        print(f"{color.CYAN}📚 Repository: {color.BOLD}https://github.com/garantiatsverga/colordebug{color.END}")
-        print(f"{color.CYAN}⭐ If you find this library useful, please consider giving it a star!{color.END}")
-        print(f"{color.CYAN}🐛 Happy debugging!{color.END}\n")
+        print(f"\n{color.BOLD}{color.CYAN}Welcome to colordebug!{color.END}")
+        print(f"{color.CYAN}Repository: {color.BOLD}https://github.com/garantiatsverga/colordebug{color.END}")
+        print(f"{color.CYAN}If you find this library useful, please consider giving it a star!{color.END}")
+        print(f"{color.CYAN}Happy debugging!{color.END}\n")
         _SHOW_WELCOME = False
 
 # Show welcome message immediately on import
 _show_welcome_message()
 
-# Configure standard logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('colordebug')
+logger.disabled = True
 
 def _clean_ansi_codes(text):
     """Remove ANSI color codes from text for log file"""
@@ -109,7 +112,6 @@ def _format_log_message(level: str, message: str, label: str = "", textwrapping:
         }
         return json.dumps(log_data, ensure_ascii=False)
     else:
-        # Text format
         clean_message = _sanitize_sensitive_data(message)
         if textwrapping:
             clean_message = textwrap.fill(clean_message, width=wrapint)
@@ -149,12 +151,28 @@ def _rotate_logs_if_needed(textwrapping: bool = False, wrapint: int = 80):
     except Exception as e:
         error(f"Log rotation failed: {e}", exp=False, textwrapping=textwrapping, wrapint=wrapint)
 
+def _panic_log(message: str):
+    """Write to panic log file without any limits or rotation"""
+    global PANIC_MODE, PANIC_LOG_FILE
+    if not PANIC_MODE:
+        return
+    
+    try:
+        timestamp = datetime.now().isoformat()
+        log_message = f"[{timestamp}] [PANIC] {message}\n"
+        
+        with open(PANIC_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_message)
+    except Exception as e:
+        # If panic logging fails, we can't do much - this is already panic mode
+        pass
+
 def _log_to_file(message: str, level: str = "INFO", textwrapping: bool = False, wrapint: int = 80):
     """Internal function for writing to log file with smart rotation"""
     if LOG_TO_FILE:
         _rotate_logs_if_needed(textwrapping, wrapint)
         
-        formatted_message = _format_log_message(level, message, level, textwrapping, wrapint)
+        formatted_message = _format_log_message(level, message, "", textwrapping, wrapint)
         
         try:
             with open(LOG_FILE, "r", encoding="utf-8") as f:
@@ -169,17 +187,9 @@ def _log_to_file(message: str, level: str = "INFO", textwrapping: bool = False, 
 
 def _std_log(level: str, msg: str, *args, **kwargs):
     """Internal function for standard logging"""
-    exp = kwargs.pop('exp', False)
-    textwrapping = kwargs.pop('textwrapping', False)
-    wrapint = kwargs.pop('wrapint', 80)
-    logger_method = getattr(logger, level.lower())
-    
-    # Sanitize message for standard logging too
-    sanitized_msg = _sanitize_sensitive_data(msg)
-    logger_method(sanitized_msg, *args, **kwargs)
-    
-    if exp:
-        _log_to_file(sanitized_msg, level, textwrapping, wrapint)
+    # Uhh, sorry, I removed that function, but I kept the definition for the sake of existing code
+    # Have a nice day=)
+    pass
 
 # Core debug functions
 def debug(msg: str, label: str = "DEBUG", label_color: str = color.BLUE, exp: bool = False, textwrapping: bool = False, wrapint: int = 80):
@@ -191,10 +201,11 @@ def debug(msg: str, label: str = "DEBUG", label_color: str = color.BLUE, exp: bo
         print(console_output)
     
     if exp:
-        log_output = f"[{label}] {_clean_ansi_codes(sanitized_msg)}"
-        _log_to_file(log_output, label, textwrapping, wrapint)
+        # Only level and message (the mark will be added into _format_log_message)
+        _log_to_file(sanitized_msg, label, textwrapping, wrapint)
     
-    _std_log('DEBUG', sanitized_msg, exp=exp, textwrapping=textwrapping, wrapint=wrapint)
+    # Panic mode logging - log everything
+    _panic_log(f"[{label}] {_clean_ansi_codes(sanitized_msg)}")
 
 def info(msg: str, exp: bool = False, textwrapping: bool = False, wrapint: int = 80):
     """Information message"""
@@ -221,14 +232,21 @@ def error(msg: str, exception: Optional[Exception] = None, exp: bool = False, te
         print(console_output)
     
     if exp:
-        log_output = f"[ERROR] {_clean_ansi_codes(sanitized_msg)}"
-        _log_to_file(log_output, "ERROR", textwrapping, wrapint)
+        # Only message and level ERROR
+        _log_to_file(sanitized_msg, "ERROR", textwrapping, wrapint)
     
-    _std_log('ERROR', sanitized_msg, exp=exp, textwrapping=textwrapping, wrapint=wrapint)
+    _panic_log(f"[ERROR] {_clean_ansi_codes(sanitized_msg)}")
 
 def critical(msg: str, exp: bool = False, textwrapping: bool = False, wrapint: int = 80):
     """Critical error message"""
     debug(msg, "CRITICAL", color.RED, exp, textwrapping, wrapint)
+    
+    # Enable panic mode on critical error
+    global PANIC_MODE
+    PANIC_MODE = True
+    
+    # Log panic mode activation
+    _panic_log("PANIC MODE ACTIVATED - Comprehensive logging started")
 
 # Async versions
 async def adebug(msg: str, label: str = "DEBUG", label_color: str = color.BLUE, exp: bool = False, textwrapping: bool = False, wrapint: int = 80):
@@ -255,6 +273,33 @@ async def acritical(msg: str, exp: bool = False, textwrapping: bool = False, wra
     """Async critical error message"""
     critical(msg, exp, textwrapping, wrapint)
 
+# Panic mode functions
+def log_variable_access(name: str, value: Any):
+    """Log variable access in panic mode"""
+    if PANIC_MODE:
+        _panic_log(f"[VARIABLE] {name} = {value}")
+    return value
+
+def log_operation(operation: str, result: Any = None):
+    """Log operations in panic mode"""
+    if PANIC_MODE:
+        if result is not None:
+            _panic_log(f"[OPERATION] {operation} -> {result}")
+        else:
+            _panic_log(f"[OPERATION] {operation}")
+    if result is not None:
+        return result
+
+def panic_mode_status() -> bool:
+    """Check if panic mode is active"""
+    return PANIC_MODE
+
+def disable_panic_mode():
+    """Manually disable panic mode"""
+    global PANIC_MODE
+    PANIC_MODE = False
+    _panic_log("PANIC MODE DEACTIVATED")
+
 # Advanced logging functions
 def log_function_call(exp: bool = False, textwrapping: bool = False, wrapint: int = 80):
     """Decorator to log function calls"""
@@ -262,9 +307,19 @@ def log_function_call(exp: bool = False, textwrapping: bool = False, wrapint: in
         @wraps(func)
         def wrapper(*args, **kwargs):
             debug(f"Calling {func.__name__}", "FUNCTION", color.MAGENTA, exp, textwrapping, wrapint)
+            
+            # Panic mode: log all arguments
+            if PANIC_MODE:
+                _panic_log(f"[FUNCTION_CALL] {func.__name__} args: {args}, kwargs: {kwargs}")
+            
             try:
                 result = func(*args, **kwargs)
                 debug(f"{func.__name__} completed successfully", "FUNCTION", color.MAGENTA, exp, textwrapping, wrapint)
+                
+                # Panic mode: log return value
+                if PANIC_MODE:
+                    _panic_log(f"[FUNCTION_RETURN] {func.__name__} -> {result}")
+                
                 return result
             except Exception as e:
                 error(f"{func.__name__} failed", e, exp, textwrapping, wrapint)
@@ -402,14 +457,8 @@ def disable_console_output(textwrapping: bool = False, wrapint: int = 80):
 
 def set_log_level(level: str, textwrapping: bool = False, wrapint: int = 80):
     """Set standard logging level"""
-    level_map = {
-        'debug': logging.DEBUG,
-        'info': logging.INFO,
-        'warning': logging.WARNING,
-        'error': logging.ERROR,
-        'critical': logging.CRITICAL
-    }
-    logger.setLevel(level_map.get(level.lower(), logging.INFO))
+    # Once again, for the sake of existing code
+    pass
 
 def set_log_format(format_type: str = 'text', textwrapping: bool = False, wrapint: int = 80):
     """Set log format (text or json)"""
@@ -523,6 +572,5 @@ def setup_production_logging(
     if not console_output:
         disable_console_output(textwrapping, wrapint)
     
-    set_log_level('INFO', textwrapping, wrapint)
     info("Production logging configured", exp=True, textwrapping=textwrapping, wrapint=wrapint)
     force_log_rotation(textwrapping, wrapint)
