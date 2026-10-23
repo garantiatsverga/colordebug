@@ -44,19 +44,6 @@ class color:
     UNDERLINE = '\033[4m'
     END = '\033[0m'
 
-def _show_welcome_message():
-    """Show welcome message on first import"""
-    global _SHOW_WELCOME
-    if _SHOW_WELCOME and CONSOLE_ENABLED:
-        print(f"\n{color.BOLD}{color.CYAN}Welcome to colordebug!{color.END}")
-        print(f"{color.CYAN}Repository: {color.BOLD}https://github.com/garantiatsverga/colordebug{color.END}")
-        print(f"{color.CYAN}If you find this library useful, please consider giving it a star!{color.END}")
-        print(f"{color.CYAN}Happy debugging!{color.END}\n")
-        _SHOW_WELCOME = False
-
-# Show welcome message immediately on import
-_show_welcome_message()
-
 logger = logging.getLogger('colordebug')
 logger.disabled = True
 
